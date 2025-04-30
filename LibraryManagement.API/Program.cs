@@ -1,12 +1,17 @@
-﻿
+﻿using FluentValidation;
+using FluentValidation.AspNetCore;
 using LibraryManagement.API.Configuration;
 using LibraryManagement.API.Data;
 using LibraryManagement.API.Data.Repositories.Implementations;
 using LibraryManagement.API.Data.Repositories.Interfaces;
+using LibraryManagement.API.Helpers;
+using LibraryManagement.API.Services.Implementations;
+using LibraryManagement.API.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Reflection;
 using System.Text;
 
 namespace LibraryManagement.API
@@ -20,11 +25,20 @@ namespace LibraryManagement.API
             // Add services to the container.
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
             builder.Services.AddDbContext<LibraryDbContext>(options =>
-                options.UseSqlServer(connectionString));
-            builder.Services.AddScoped(typeof(IRepository<,>), typeof(Repository<,>));
+                options.UseSqlServer(connectionString).UseLazyLoadingProxies());
+            builder.Services.AddScoped<IUserRepository, UserRepository>();
+            builder.Services.AddScoped<IUserRefreshTokenRepository, UserRefreshTokenRepository>();
+            builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<ITokenService, TokenService>();
+            builder.Services.AddSingleton<PasswordHasher>();
             builder.Services.AddControllers();
+            builder.Services.AddFluentValidationAutoValidation();
+            builder.Services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
             builder.Services.AddEndpointsApiExplorer();
-            builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtAppsettings"));
+            var jwtSettings = new JwtSettings();
+            builder.Configuration.Bind("JwtAppsettings", jwtSettings); // Hoặc tên section bạn đặt
+            builder.Services.AddSingleton(jwtSettings); // Dùng Singleton vì JwtSettings không thay đổi khi chạy
+
             var secretKey = builder.Configuration["JwtAppsettings:SecretKey"];
             var secretKeyByte = Encoding.UTF8.GetBytes(secretKey);
             builder.Services.AddAuthentication(options =>

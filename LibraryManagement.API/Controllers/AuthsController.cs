@@ -1,4 +1,5 @@
-﻿using LibraryManagement.API.Models.DTOs.Auth;
+﻿using FluentValidation;
+using LibraryManagement.API.Models.DTOs.Auth;
 using LibraryManagement.API.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,11 +14,12 @@ namespace LibraryManagement.API.Controllers
     {
         private readonly IAuthService _authService;
         private readonly ILogger<AuthController> _logger;
-
-        public AuthController(IAuthService authService, ILogger<AuthController> logger)
+        private readonly IValidator<RegisterRequestDto> _registerValidator;
+        public AuthController(IAuthService authService, ILogger<AuthController> logger, IValidator<RegisterRequestDto> registerValidator)
         {
             _authService = authService;
             _logger = logger;
+            _registerValidator = registerValidator;
         }
 
         /// <summary>
@@ -33,12 +35,6 @@ namespace LibraryManagement.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(object))] // Lỗi logic (vd: email tồn tại)
         public async Task<IActionResult> Register([FromBody] RegisterRequestDto registerDto, CancellationToken cancellationToken)
         {
-            // ModelState.IsValid được [ApiController] kiểm tra tự động, nhưng có thể check lại nếu muốn
-            if (!ModelState.IsValid)
-            {
-                return ValidationProblem(ModelState); // Trả về lỗi 400 chuẩn với chi tiết validation
-            }
-
             _logger.LogInformation("Registration attempt for email: {Email}", registerDto.Email);
             // *** Giả định RegisterAsync đã được implement đúng trong AuthService ***
             var result = await _authService.RegisterAsync(registerDto, cancellationToken);
@@ -68,11 +64,6 @@ namespace LibraryManagement.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(object))]
         public async Task<IActionResult> Login([FromBody] LoginRequestDto loginRequest, CancellationToken cancellationToken)
         {
-            if (!ModelState.IsValid)
-            {
-                return ValidationProblem(ModelState);
-            }
-
             _logger.LogInformation("Login attempt for user: {UserName}", loginRequest.UserName);
             // *** Giả định LoginAsync đã được implement đúng trong AuthService ***
             var result = await _authService.LoginAsync(loginRequest, cancellationToken);
@@ -100,10 +91,6 @@ namespace LibraryManagement.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(object))]
         public async Task<IActionResult> RefreshToken([FromBody] TokenRequestDto tokenRequest, CancellationToken cancellationToken) // Dùng TokenRequestDto như trong service
         {
-            if (!ModelState.IsValid) // Kiểm tra DTO hợp lệ
-            {
-                return ValidationProblem(ModelState);
-            }
             if (string.IsNullOrEmpty(tokenRequest.RefreshToken)) // Kiểm tra cụ thể RefreshToken
             {
                 return BadRequest(new { message = "Refresh token is required." });

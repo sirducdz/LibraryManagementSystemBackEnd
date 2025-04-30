@@ -15,7 +15,7 @@ namespace LibraryManagement.API.Data.Configurations
 
             // Thiết lập quan hệ một-nhiều: Một User có thể có nhiều RefreshToken
             builder.HasOne(rt => rt.User)
-                  .WithMany() // Không cần navigation property ngược lại trong User nếu không muốn
+                  .WithMany(u => u.RefreshTokens) // Không cần navigation property ngược lại trong User nếu không muốn
                   .HasForeignKey(rt => rt.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
         }

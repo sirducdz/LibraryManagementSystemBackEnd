@@ -47,7 +47,7 @@ namespace LibraryManagement.API.Services.Implementations
 
             // --- Tạo Tokens ---
             var authClaims = CreateClaims(user); // Hàm helper như trước
-            var recievedToken = _tokenService.GenerateAccessToken(authClaims);
+            var receivedToken = _tokenService.GenerateAccessToken(authClaims);
             var refreshTokenString = _tokenService.GenerateRefreshToken();
 
             // --- Tạo và Lưu Refresh Token Entity Mới ---
@@ -55,7 +55,7 @@ namespace LibraryManagement.API.Services.Implementations
             {
                 Id = Guid.NewGuid(),
                 UserId = user.Id,
-                JwtId = recievedToken.Jti,
+                JwtId = receivedToken.Jti,
                 Token = refreshTokenString,
                 ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays),
                 CreatedAt = DateTime.UtcNow,
@@ -81,7 +81,7 @@ namespace LibraryManagement.API.Services.Implementations
             _logger.LogInformation("User {UserId} logged in successfully. Refresh token generated.", user.Id);
             return (true, new TokenResponseDto
             {
-                AccessToken = recievedToken.AccessToken,
+                AccessToken = receivedToken.AccessToken,
                 RefreshToken = refreshTokenString, // Trả về chuỗi token
                 AccessTokenExpiration = DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes)
             }, null);
@@ -304,10 +304,6 @@ namespace LibraryManagement.API.Services.Implementations
                 new Claim(ClaimTypes.Role, user.Role.RoleName) // Thêm tên nếu cần
             };
 
-            // Ví dụ tạm dựa trên RoleID
-            string roleName = user.RoleID == 1 ? "SuperUser" : "NormalUser"; // Giả định ID 1 = SuperUser
-            claims.Add(new Claim(ClaimTypes.Role, roleName));
-
             return claims;
         }
 
@@ -316,9 +312,9 @@ namespace LibraryManagement.API.Services.Implementations
         //    throw new NotImplementedException();
         //}
 
-        public Task<(bool Success, string? UserId, string? ErrorMessage)> RegisterAsync(RegisterRequestDto registerRequest, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
+        //public Task<(bool Success, string? UserId, string? ErrorMessage)> RegisterAsync(RegisterRequestDto registerRequest, CancellationToken cancellationToken = default)
+        //{
+        //    throw new NotImplementedException();
+        //}
     }
 }

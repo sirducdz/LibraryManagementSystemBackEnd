@@ -19,7 +19,7 @@ namespace LibraryManagement.API.Services.Implementations
 
         public (string AccessToken, string Jti) GenerateAccessToken(IEnumerable<Claim> claims)
         {
-            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
+            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
@@ -50,7 +50,7 @@ namespace LibraryManagement.API.Services.Implementations
                 ValidateAudience = true, // Cần validate Audience
                 ValidateIssuer = true,   // Cần validate Issuer
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret)),
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey)),
                 ValidateLifetime = false, // Không kiểm tra hết hạn ở đây vì token đã hết hạn
                 ValidIssuer = _jwtSettings.Issuer,
                 ValidAudience = _jwtSettings.Audience,
