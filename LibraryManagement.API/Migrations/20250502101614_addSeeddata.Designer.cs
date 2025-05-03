@@ -4,6 +4,7 @@ using LibraryManagement.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LibraryManagement.API.Migrations
 {
     [DbContext(typeof(LibraryDbContext))]
-    partial class LibraryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250502101614_addSeeddata")]
+    partial class addSeeddata
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -114,10 +117,6 @@ namespace LibraryManagement.API.Migrations
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("RejectionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<int>("RequestorID")
                         .HasColumnType("int");
 
@@ -190,8 +189,8 @@ namespace LibraryManagement.API.Migrations
                     b.Property<DateTime>("RatingDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("StarRating")
-                        .HasColumnType("int");
+                    b.Property<double>("StarRating")
+                        .HasColumnType("float");
 
                     b.Property<int>("UserID")
                         .HasColumnType("int");

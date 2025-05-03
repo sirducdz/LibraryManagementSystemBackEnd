@@ -16,12 +16,12 @@ namespace LibraryManagement.API.Models.Entities
         public int BookID { get; set; } // Foreign Key
 
         [Required]
-        [Range(1.0, 5.0)]
-        public double StarRating { get; set; }
+        [Range(1, 5)]
+        public int StarRating { get; set; }
 
         public string? Comment { get; set; }
 
-        public DateTime RatingDate { get; set; } = DateTime.Now;
+        public DateTime RatingDate { get; set; } = DateTime.UtcNow;
 
         // ----- Navigation Properties -----
         [ForeignKey("UserID")]

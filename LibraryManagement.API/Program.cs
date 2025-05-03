@@ -30,6 +30,15 @@ namespace LibraryManagement.API
             builder.Services.AddScoped<IUserRefreshTokenRepository, UserRefreshTokenRepository>();
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<ITokenService, TokenService>();
+            builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
+            builder.Services.AddScoped<IBookRepository, BookRepository>();
+            builder.Services.AddScoped<IBookRatingRepository, BookRatingRepository>();
+            builder.Services.AddScoped<IBookRatingService, BookRatingService>();
+            builder.Services.AddScoped<IBookService, BookService>();
+            builder.Services.AddScoped<IBorrowingService, BorrowingService>();
+            builder.Services.AddScoped<ICategoryService, CategoryService>();
+            builder.Services.AddScoped<IBookBorrowingRequestRepository, BookBorrowingRequestRepository>();
+            builder.Services.AddScoped<IBookBorrowingRequestDetailsRepository, BookBorrowingRequestDetailsRepository>();
             builder.Services.AddSingleton<PasswordHasher>();
             builder.Services.AddControllers();
             builder.Services.AddFluentValidationAutoValidation();

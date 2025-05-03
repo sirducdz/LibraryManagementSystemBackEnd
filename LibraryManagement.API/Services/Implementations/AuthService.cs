@@ -91,6 +91,10 @@ namespace LibraryManagement.API.Services.Implementations
         {
 
             var TokenClaims = _tokenService.GetPrincipalFromExpiredToken(providedToken.AccessToken);
+            if (TokenClaims == null)
+            {
+                return (false, null, "Invalid token.");
+            }
             var utcExpiredDate = long.Parse(TokenClaims?.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Exp)?.Value);
             var expiredDate = DateTimeHelper.ConvertFromUnixSeconds(utcExpiredDate);
             if (expiredDate > DateTime.UtcNow)

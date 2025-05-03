@@ -31,9 +31,9 @@ namespace LibraryManagement.API.Data.Repositories.Implementations
         {
             return await _dbSet.ToListAsync(cancellationToken);
         }
-        public virtual IQueryable<TEntity> Find(Expression<Func<TEntity, bool>> predicate)
+        public virtual IQueryable<TEntity> Find(Expression<Func<TEntity, bool>> predicate, bool trackEntities = false)
         {
-            return _dbSet.Where(predicate).AsNoTracking();
+            return trackEntities ? _dbSet.Where(predicate) : _dbSet.Where(predicate).AsNoTracking();
         }
 
         public virtual async Task<int> AddAsync(TEntity entity, CancellationToken cancellationToken = default)

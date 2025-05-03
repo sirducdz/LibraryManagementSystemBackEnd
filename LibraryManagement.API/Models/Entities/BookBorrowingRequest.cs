@@ -13,17 +13,18 @@ namespace LibraryManagement.API.Models.Entities
         [Required]
         public int RequestorID { get; set; } // Foreign Key
 
-        public DateTime DateRequested { get; set; } = DateTime.Now;
+        public DateTime DateRequested { get; set; } = DateTime.UtcNow;
 
         [Required] // Giữ lại nếu trường này là bắt buộc
         public BorrowingStatus Status { get; set; } = BorrowingStatus.Waiting;
 
         public int? ApproverID { get; set; } // Foreign Key, nullable
-
+        [MaxLength(500)] // Giới hạn độ dài lý do
+        public string? RejectionReason { get; set; }
         public DateTime? DateProcessed { get; set; }
         public DateTime? DueDate { get; set; } // Hạn trả chung cho request
 
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
 
         // ----- Navigation Properties -----

@@ -9,7 +9,7 @@ namespace LibraryManagement.API.Data.Repositories.Interfaces
         Task<TEntity?> GetByIdAsync(TKey id, CancellationToken cancellationToken = default);
         IQueryable<TEntity> GetAllQueryable(bool trackEntities = false); // Mặc định không track
         Task<IEnumerable<TEntity>> GetAllAsync(CancellationToken cancellationToken = default);
-        IQueryable<TEntity> Find(Expression<Func<TEntity, bool>> predicate);
+        IQueryable<TEntity> Find(Expression<Func<TEntity, bool>> predicate, bool trackEntities = false);
         Task<int> AddAsync(TEntity entity, CancellationToken cancellationToken = default);
         Task<int> AddRangeAsync(IEnumerable<TEntity> entities, CancellationToken cancellationToken = default);
         Task<int> UpdateAsync(TEntity entity, CancellationToken cancellationToken = default); // Đổi tên + Thêm CancellationToken
