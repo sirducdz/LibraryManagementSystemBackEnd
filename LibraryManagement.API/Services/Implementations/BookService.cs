@@ -6,6 +6,7 @@ using LibraryManagement.API.Models.Entities;
 using LibraryManagement.API.Models.Enums;
 using LibraryManagement.API.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
 
 namespace LibraryManagement.API.Services.Implementations
 {
@@ -29,31 +30,70 @@ namespace LibraryManagement.API.Services.Implementations
             try
             {
                 var query = _bookRepository.GetAllQueryable(false)
-                                          .Include(b => b.Category).AsQueryable(); // Include Category
-                                                                                   //.Where(b => !b.IsDeleted); // Luôn lọc sách chưa xóa mềm đã cấu hình trong configuration
+                                          .Include(b => b.Category)
+                                          .Include(b => b.BorrowingDetails!) // Include chi tiết mượn
+                                                .ThenInclude(d => d.Request)
+                                          .AsQueryable(); // Include Category
+                                                          //.Where(b => !b.IsDeleted); // Luôn lọc sách chưa xóa mềm đã cấu hình trong configuration
 
-                // --- Lọc theo CategoryId nếu được cung cấp ---
+                // 1. Lọc theo CategoryId
                 if (queryParams.CategoryId.HasValue && queryParams.CategoryId > 0)
                 {
-                    query = query.Where(b => b.Id == queryParams.CategoryId.Value);
+                    query = query.Where(b => b.CategoryID == queryParams.CategoryId.Value);
                 }
 
-                // --- (Tùy chọn) Lọc theo isFeatured hoặc searchTerm ---
-                // if (queryParams.IsFeatured.HasValue && queryParams.IsFeatured.Value)
-                // {
-                //     query = query.Where(b => b.IsFeatured == true); // Giả sử có cột IsFeatured
-                // }
-                // if (!string.IsNullOrWhiteSpace(queryParams.SearchTerm))
-                // {
-                //     var term = queryParams.SearchTerm.ToLower();
-                //     query = query.Where(b => b.Title.ToLower().Contains(term) || b.Author.ToLower().Contains(term));
-                // }
+                // 2. Lọc theo SearchTerm (Title hoặc Author) - Không phân biệt hoa thường
+                if (!string.IsNullOrWhiteSpace(queryParams.SearchTerm))
+                {
+                    var term = queryParams.SearchTerm.Trim().ToLower(); // Chuẩn hóa search term
+                    query = query.Where(b => b.Title.ToLower().Contains(term) ||
+                                             (b.Author != null && b.Author.ToLower().Contains(term)));
+                }
 
-                // --- (Tùy chọn) Sắp xếp ---
-                // Mặc định sắp xếp theo Title hoặc ID
-                // if (!string.IsNullOrWhiteSpace(queryParams.SortBy)) { ... logic sắp xếp ... }
-                // else { query = query.OrderBy(b => b.Title); }
-                query = query.OrderBy(b => b.Title); // Ví dụ sắp xếp theo Title
+                // 3. Lọc theo IsAvailable (Tính toán động trong Where)
+                // Lưu ý: Việc lọc dựa trên tính toán từ bảng liên quan như thế này có thể ảnh hưởng hiệu năng.
+                // Cần Include BorrowingDetails và Request như đã làm ở trên.
+                if (queryParams.IsAvailable.HasValue)
+                {
+                    if (queryParams.IsAvailable.Value) // Lọc sách CÓ SẴN (Available = true)
+                    {
+                        query = query.Where(b => (b.TotalQuantity - b.BorrowingDetails
+                                                   .Count(detail => detail.Request!.Status == BorrowingStatus.Approved && detail.ReturnedDate == null)) > 0);
+                    }
+                    else // Lọc sách ĐÃ HẾT (Available = false)
+                    {
+                        query = query.Where(b => (b.TotalQuantity - b.BorrowingDetails
+                                                  .Count(detail => detail.Request!.Status == BorrowingStatus.Approved && detail.ReturnedDate == null)) <= 0);
+                    }
+                }
+
+                // --- ÁP DỤNG SORTING ---
+                // Tạo biểu thức sắp xếp động
+                Expression<Func<Book, object>> keySelector = queryParams.SortBy?.ToLowerInvariant() switch
+                {
+                    "title" => b => b.Title,
+                    "author" => b => b.Author ?? "", // Xử lý Author có thể null
+                    "rating" => b => b.AverageRating, // Sắp xếp theo điểm trung bình
+                    "ratingcount" => b => b.RatingCount, // Sắp xếp theo số lượt đánh giá
+                    "createdat" => b => b.CreatedAt, // Sắp xếp theo ngày tạo
+                    "year" => b => b.PublicationYear ?? 0, // Sắp xếp theo năm XB (xử lý null)
+                    "id" => b => b.Id, // Sắp xếp theo năm XB (xử lý null)
+                    _ => b => b.Title // Mặc định sắp xếp theo Title nếu SortBy không hợp lệ hoặc null
+                };
+
+                // Áp dụng OrderBy hoặc OrderByDescending
+                if (string.Equals(queryParams.SortOrder, "desc", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.OrderByDescending(keySelector);
+                }
+                else
+                {
+                    query = query.OrderBy(keySelector);
+                }
+
+                // Thêm sắp xếp phụ để đảm bảo thứ tự ổn định nếu key chính bằng nhau
+                //query = query.ThenBy(b => b.Id); // Luôn sắp xếp theo ID làm tiêu chí phụ
+
 
                 // --- Đếm tổng số lượng item khớp điều kiện LỌC (TRƯỚC KHI PHÂN TRANG) ---
                 var totalItems = await query.CountAsync(cancellationToken);
