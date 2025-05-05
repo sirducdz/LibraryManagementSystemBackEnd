@@ -126,7 +126,10 @@ namespace LibraryManagement.API.Services.Implementations
                         Available = availableQuantity > 0,
                         Copies = availableQuantity,
                         PublicationYear = b.PublicationYear,
-                        ISBN = b.ISBN
+                        ISBN = b.ISBN,
+                        TotalQuantity = b.TotalQuantity,
+                        Publisher = b.Publisher,
+                        Description = b.Description
                     };
                 }).ToList();
                 // --- Dùng AutoMapper ProjectTo (hiệu quả hơn) ---

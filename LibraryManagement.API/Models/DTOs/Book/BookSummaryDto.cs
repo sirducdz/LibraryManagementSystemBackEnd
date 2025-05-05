@@ -17,5 +17,8 @@
         public int? PublicationYear { get; set; }
         public int? Copies { get; set; }
         public string? ISBN { get; set; }
+        public int TotalQuantity { get; set; } = 0;
+        public string? Publisher { get; set; }
+        public string? Description { get; set; }
     }
 }

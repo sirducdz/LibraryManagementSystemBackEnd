@@ -1,4 +1,6 @@
 ﻿using LibraryManagement.API.Models.DTOs.Category;
+using LibraryManagement.API.Models.DTOs.Common;
+using LibraryManagement.API.Models.DTOs.QueryParameters;
 using LibraryManagement.API.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -169,6 +171,41 @@ namespace LibraryManagement.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting category ID {CategoryId}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An unexpected error occurred." });
+            }
+        }
+
+        [HttpGet("all")] // Route: GET /api/categories
+        [AllowAnonymous]
+        // <<< Cập nhật kiểu trả về >>>
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(PagedResult<CategoryDto>))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(object))]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError, Type = typeof(object))]
+        // <<< Thay đổi tham số và kiểu trả về của Action >>>
+        public async Task<ActionResult<PagedResult<CategoryDto>>> GetAllCategories(
+          [FromQuery] CategoryQueryParameters queryParams, // << Nhận DTO Query Parameters
+          CancellationToken cancellationToken)
+        {
+            // Validation cơ bản
+            if (queryParams.Page <= 0 || queryParams.PageSize <= 0)
+                return BadRequest(new { message = "Page number and page size must be positive." });
+
+            try
+            {
+                // <<< Gọi service với queryParams >>>
+                var pagedResult = await _categoryService.GetAllCategoriesPaginationAsync(queryParams, cancellationToken);
+
+                // Thêm header phân trang (tùy chọn)
+                Response.Headers.Append("X-Pagination-Page", pagedResult.Page.ToString());
+                Response.Headers.Append("X-Pagination-PageSize", pagedResult.PageSize.ToString());
+                Response.Headers.Append("X-Pagination-TotalItems", pagedResult.TotalItems.ToString());
+                Response.Headers.Append("X-Pagination-TotalPages", pagedResult.TotalPages.ToString());
+
+                return Ok(pagedResult); // Trả về PagedResult
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while retrieving categories with query: {@QueryParams}", queryParams);
                 return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An unexpected error occurred." });
             }
         }

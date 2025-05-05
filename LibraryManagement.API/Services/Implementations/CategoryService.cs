@@ -1,7 +1,11 @@
 ﻿using LibraryManagement.API.Data.Repositories.Interfaces;
 using LibraryManagement.API.Models.DTOs.Category;
+using LibraryManagement.API.Models.DTOs.Common;
+using LibraryManagement.API.Models.DTOs.QueryParameters;
 using LibraryManagement.API.Models.Entities;
 using LibraryManagement.API.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
 
 namespace LibraryManagement.API.Services.Implementations
 {
@@ -148,7 +152,10 @@ namespace LibraryManagement.API.Services.Implementations
             _logger.LogInformation("Attempting to delete category with ID: {CategoryId}", id);
             try
             {
-                var categoryToDelete = await _categoryRepository.GetByIdAsync(id, cancellationToken);
+                //var categoryToDelete = await _categoryRepository.GetByIdAsync(id, cancellationToken);
+                var categoryToDelete = await _categoryRepository.GetAllQueryable(true).IgnoreQueryFilters()
+                    .Include(c => c.Books)
+                    .FirstOrDefaultAsync(c => c.Id == id);
                 if (categoryToDelete == null)
                 {
                     _logger.LogWarning("Delete category failed: ID {CategoryId} not found.", id);
@@ -164,6 +171,7 @@ namespace LibraryManagement.API.Services.Implementations
                 }
                 // -----------------------------
 
+                await _bookRepository.RemoveRangeAsync(categoryToDelete.Books); // Xóa sách liên quan (nếu có) trước khi xóa danh mục
                 // Thực hiện xóa cứng (Hard Delete vì Category không có IsDeleted)
                 int deletedCount = await _categoryRepository.RemoveAsync(categoryToDelete, cancellationToken); // Repo auto-save
 
@@ -199,7 +207,72 @@ namespace LibraryManagement.API.Services.Implementations
                 UpdatedAt = category.UpdatedAt
             };
         }
+        public async Task<PagedResult<CategoryDto>> GetAllCategoriesPaginationAsync(CategoryQueryParameters queryParams, CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("Fetching categories with parameters: {@QueryParams}", queryParams);
+            try
+            {
+                // Bắt đầu với IQueryable (giả sử repo có GetQueryable và không AsNoTracking)
+                // Không cần Include gì thêm cho Category DTO cơ bản
+                var query = _categoryRepository.GetAllQueryable(); // Giả định repo trả về IQueryable<Category>
 
+                // --- Áp dụng Filter ---
+                if (!string.IsNullOrWhiteSpace(queryParams.SearchTerm))
+                {
+                    var term = queryParams.SearchTerm.Trim().ToLower();
+                    // Tìm trong Name hoặc Description (nếu muốn)
+                    query = query.Where(c => c.Name.ToLower().Contains(term) ||
+                                             (c.Description != null && c.Description.ToLower().Contains(term)));
+                }
+
+                // --- Áp dụng Sorting ---
+                Expression<Func<Category, object>> keySelector = queryParams.SortBy?.ToLowerInvariant() switch
+                {
+                    "name" => c => c.Name,
+                    "createdat" => c => c.CreatedAt,
+                    _ => c => c.Name // Mặc định sort theo Name
+                };
+
+                bool ascending = !string.Equals(queryParams.SortOrder, "desc", StringComparison.OrdinalIgnoreCase);
+
+                if (ascending)
+                {
+                    query = query.OrderBy(keySelector);
+                }
+                else
+                {
+                    query = query.OrderByDescending(keySelector);
+                }
+                // Thêm sắp xếp phụ
+
+
+                // --- Đếm tổng số ---
+                var totalItems = await query.CountAsync(cancellationToken);
+
+
+                // --- Phân trang ---
+                var categories = await query
+                    .Skip((queryParams.Page - 1) * queryParams.PageSize)
+                    .Take(queryParams.PageSize)
+                    .ToListAsync(cancellationToken);
+
+                // --- Map sang DTO ---
+                var categoryDtos = categories.Select(c => MapToDto(c)).ToList(); // Dùng hàm helper MapToDto
+
+                // --- Trả về PagedResult ---
+                var pagedResult = new PagedResult<CategoryDto>(categoryDtos, queryParams.Page, queryParams.PageSize, totalItems);
+                _logger.LogInformation("Successfully fetched page {Page} with {Count} categories. Total items: {TotalItems}",
+                     queryParams.Page, categoryDtos.Count, totalItems);
+                return pagedResult;
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching categories with query parameters: {@QueryParams}", queryParams);
+                // Trả về kết quả rỗng khi có lỗi
+                return new PagedResult<CategoryDto>(new List<CategoryDto>(), queryParams.Page, queryParams.PageSize, 0);
+            }
+        }
         // Implement các phương thức khác của ICategoryService ở đây...
     }
 }
