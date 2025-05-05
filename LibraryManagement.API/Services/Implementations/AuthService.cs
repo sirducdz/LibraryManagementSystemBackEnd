@@ -1,10 +1,13 @@
-﻿using LibraryManagement.API.Configuration;
+﻿using Google.Apis.Auth;
+using LibraryManagement.API.Configuration;
 using LibraryManagement.API.Data.Repositories.Interfaces;
 using LibraryManagement.API.Helpers;
 using LibraryManagement.API.Models.DTOs.Auth;
 using LibraryManagement.API.Models.Entities;
 using LibraryManagement.API.Models.Enums;
 using LibraryManagement.API.Services.Interfaces;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
@@ -18,6 +21,7 @@ namespace LibraryManagement.API.Services.Implementations
         private readonly JwtSettings _jwtSettings;
         private readonly PasswordHasher _passwordHasher;
         private readonly ILogger<AuthService> _logger;
+        private readonly GoogleAuthSettings _googleAuthSettings;
 
         public AuthService(
             IUserRepository userRepository,
@@ -25,7 +29,7 @@ namespace LibraryManagement.API.Services.Implementations
             ITokenService tokenService,
             JwtSettings jwtSettings,
             PasswordHasher passwordHasher,
-            ILogger<AuthService> logger)
+            ILogger<AuthService> logger, IOptions<GoogleAuthSettings> googleAuthSettingsOptions)
         {
             _userRepository = userRepository;
             _refreshTokenRepository = refreshTokenRepository;
@@ -33,6 +37,7 @@ namespace LibraryManagement.API.Services.Implementations
             _jwtSettings = jwtSettings;
             _passwordHasher = passwordHasher;
             _logger = logger;
+            _googleAuthSettings = googleAuthSettingsOptions.Value;
         }
 
         public async Task<(bool Success, TokenResponseDto? Tokens, string? ErrorMessage)> LoginAsync(LoginRequestDto loginRequest, CancellationToken cancellationToken = default)
@@ -311,14 +316,115 @@ namespace LibraryManagement.API.Services.Implementations
             return claims;
         }
 
-        //public Task<(bool Success, TokenResponseDto? Tokens, string? ErrorMessage)> RefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
-        //{
-        //    throw new NotImplementedException();
-        //}
+        public async Task<(bool Success, TokenResponseDto? Tokens, string? ErrorMessage)> GoogleSignInAsync(string googleIdToken, CancellationToken cancellationToken = default)
+        {
+            GoogleJsonWebSignature.Payload payload;
+            try
+            {
+                // 1. Xác thực Google ID Token
+                var validationSettings = new GoogleJsonWebSignature.ValidationSettings
+                {
+                    Audience = new[] { _googleAuthSettings.ClientId } // Kiểm tra Audience phải là ClientID của bạn
+                };
+                payload = await GoogleJsonWebSignature.ValidateAsync(googleIdToken, validationSettings);
+                _logger.LogInformation("Google ID Token validated for email: {Email}", payload.Email);
+            }
+            catch (InvalidJwtException ex)
+            {
+                _logger.LogWarning(ex, "Invalid Google ID Token received.");
+                return (false, null, "Invalid Google token."); // Lỗi cụ thể cho client biết
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating Google ID Token.");
+                return (false, null, "Error validating Google token."); // Lỗi chung chung hơn
+            }
 
-        //public Task<(bool Success, string? UserId, string? ErrorMessage)> RegisterAsync(RegisterRequestDto registerRequest, CancellationToken cancellationToken = default)
-        //{
-        //    throw new NotImplementedException();
-        //}
+            // --- Token Google hợp lệ ---
+            try
+            {
+                // 2. Tìm User trong DB bằng Email từ payload
+                User? user = await _userRepository.FindByEmailAsync(payload.Email, cancellationToken);
+
+                // 3. Xử lý User: Tạo mới nếu chưa có
+                if (user == null)
+                {
+                    _logger.LogInformation("User with email {Email} not found. Registering new user via Google.", payload.Email);
+                    // Tạo user mới
+                    user = new User
+                    {
+                        UserName = payload.Email, // Dùng Email làm UserName
+                        Email = payload.Email,
+                        FullName = payload.Name ?? payload.Email, // Lấy tên từ Google, nếu không có dùng tạm Email
+                        PasswordHash = "", // Không có mật khẩu cục bộ - Cần xử lý ở luồng login thường
+                        RoleID = 2, // Vai trò mặc định (ví dụ: NormalUser = 2)
+                        IsActive = true, // Kích hoạt ngay
+                        CreatedAt = DateTime.UtcNow,
+                        Gender = Gender.Unknown // Hoặc thử lấy từ payload nếu có
+                                                // EmailVerified = payload.EmailVerified // Lưu trạng thái xác thực nếu cần
+                    };
+
+                    // Lưu user mới vào DB (Repo auto-save)
+                    int addedCount = await _userRepository.AddAsync(user, cancellationToken);
+                    if (addedCount <= 0)
+                    {
+                        _logger.LogError("Failed to register user via Google: AddAsync returned 0 for email {Email}.", payload.Email);
+                        return (false, null, "Failed to create local user account.");
+                    }
+                    _logger.LogInformation("New user {UserId} registered via Google for email {Email}.", user.Id, payload.Email);
+                }
+                else if (!user.IsActive)
+                {
+                    // User tồn tại nhưng bị khóa
+                    _logger.LogWarning("Google Sign-In attempt failed for email {Email}: User account is inactive.", payload.Email);
+                    return (false, null, "Your account is inactive.");
+                }
+                else
+                {
+                    _logger.LogInformation("User {UserId} with email {Email} found locally. Proceeding with login.", user.Id, payload.Email);
+                }
+
+                // --- 4. Tạo Token của Hệ thống Bạn ---
+                var authClaims = CreateClaims(user); // Tạo claims cho user này
+                var (accessToken, generatedJti) = _tokenService.GenerateAccessToken(authClaims); // Lấy cả JTI trả về
+                var refreshTokenString = _tokenService.GenerateRefreshToken();
+
+                // Tạo và lưu Refresh Token mới vào DB
+                var refreshTokenEntity = new UserRefreshToken
+                {
+                    UserId = user.Id,
+                    Token = refreshTokenString,
+                    ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays),
+                    JwtId = generatedJti, // Lưu JTI của Access Token tương ứng
+                    IsRevoked = false
+                };
+
+                // Có thể thu hồi các token cũ của user ở đây nếu muốn
+                await RevokeAllUserTokensAsync(user.Id, cancellationToken);
+
+                await _refreshTokenRepository.AddAsync(refreshTokenEntity, cancellationToken); // Repo auto-save
+
+                _logger.LogInformation("Generated local tokens for User {UserId} after Google Sign-In.", user.Id);
+
+                // 5. Trả về bộ token của hệ thống bạn
+                return (true, new TokenResponseDto
+                {
+                    AccessToken = accessToken,
+                    RefreshToken = refreshTokenString,
+                    AccessTokenExpiration = DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes)
+                }, null);
+
+            }
+            catch (DbUpdateException dbEx) // Bắt lỗi DB cụ thể khi tạo user/token
+            {
+                _logger.LogError(dbEx, "Database error during Google Sign-In processing for email {Email}.", payload.Email);
+                return (false, null, "A database error occurred during sign-in.");
+            }
+            catch (Exception ex) // Bắt lỗi chung khác
+            {
+                _logger.LogError(ex, "Unexpected error during Google Sign-In processing for email {Email}.", payload.Email);
+                return (false, null, "An unexpected error occurred during sign-in.");
+            }
+        }
     }
 }

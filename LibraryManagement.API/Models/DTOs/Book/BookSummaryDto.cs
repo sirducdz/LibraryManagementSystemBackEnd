@@ -16,5 +16,6 @@
         // public string? Description { get; set; }
         public int? PublicationYear { get; set; }
         public int? Copies { get; set; }
+        public string? ISBN { get; set; }
     }
 }

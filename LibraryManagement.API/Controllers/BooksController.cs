@@ -82,12 +82,12 @@ namespace LibraryManagement.API.Controllers
         }
 
         /// <summary>
-        /// Tạo một cuốn sách mới (chỉ SuperUser).
+        /// Tạo một cuốn sách mới (chỉ Admin).
         /// </summary>
         /// <param name="bookDto">Thông tin sách mới.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         [HttpPost]
-        [Authorize(Roles = "SuperUser")] // <<< Chỉ SuperUser được tạo sách
+        [Authorize(Roles = "Admin")] // <<< Chỉ Admin được tạo sách
         [ProducesResponseType(StatusCodes.Status201Created, Type = typeof(BookDetailDto))]
         [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(object))] // Lỗi validation hoặc logic
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -115,13 +115,13 @@ namespace LibraryManagement.API.Controllers
         }
 
         /// <summary>
-        /// Cập nhật thông tin một cuốn sách (chỉ SuperUser).
+        /// Cập nhật thông tin một cuốn sách (chỉ Admin).
         /// </summary>
         /// <param name="id">ID của sách cần cập nhật.</param>
         /// <param name="bookDto">Thông tin cập nhật.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         [HttpPut("{id:int}")]
-        [Authorize(Roles = "SuperUser")] // <<< Chỉ SuperUser được cập nhật
+        [Authorize(Roles = "Admin")] // <<< Chỉ Admin được cập nhật
         [ProducesResponseType(StatusCodes.Status204NoContent)] // Thành công không trả về body
         [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(object))]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -153,12 +153,12 @@ namespace LibraryManagement.API.Controllers
         }
 
         /// <summary>
-        /// Xóa mềm một cuốn sách (chỉ SuperUser).
+        /// Xóa mềm một cuốn sách (chỉ Admin).
         /// </summary>
         /// <param name="id">ID của sách cần xóa.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         [HttpDelete("{id:int}")]
-        [Authorize(Roles = "SuperUser")] // <<< Chỉ SuperUser được xóa
+        [Authorize(Roles = "Admin")] // <<< Chỉ Admin được xóa
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]

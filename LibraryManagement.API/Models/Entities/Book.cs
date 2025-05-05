@@ -43,7 +43,7 @@ namespace LibraryManagement.API.Models.Entities
         [Range(0, int.MaxValue)]
         public int RatingCount { get; set; } = 0;
 
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         public bool IsDeleted { get; set; } = false; // Soft delete flag
 

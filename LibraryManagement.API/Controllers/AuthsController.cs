@@ -175,5 +175,42 @@ namespace LibraryManagement.API.Controllers
 
             return Ok(userInfo);
         }
+
+        [HttpPost("google-signin")]
+        [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(TokenResponseDto))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(object))]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(object))]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError, Type = typeof(object))]
+        public async Task<IActionResult> GoogleSignIn([FromBody] GoogleSignInRequestDto request, CancellationToken cancellationToken)
+        {
+            if (!ModelState.IsValid || string.IsNullOrEmpty(request.Credential))
+            {
+                return BadRequest(new { message = "Google credential (ID Token) is required." });
+            }
+
+            _logger.LogInformation("Attempting Google Sign-In.");
+            try
+            {
+                var result = await _authService.GoogleSignInAsync(request.Credential, cancellationToken);
+
+                if (!result.Success)
+                {
+                    if (result.ErrorMessage?.Contains("Invalid Google token") ?? false)
+                    {
+                        return Unauthorized(new { message = result.ErrorMessage }); // 401
+                    }
+                    _logger.LogWarning("Google Sign-In failed: {ErrorMessage}", result.ErrorMessage);
+                    // Các lỗi khác trả về 500 hoặc 400
+                    return StatusCode(StatusCodes.Status500InternalServerError, new { message = result.ErrorMessage ?? "Google Sign-In failed." });
+                }
+                return Ok(result.Tokens); // 200 OK
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during Google Sign-In processing.");
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An unexpected error occurred during sign-in." });
+            }
+        }
     }
 }

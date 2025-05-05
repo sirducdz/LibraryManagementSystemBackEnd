@@ -13,6 +13,19 @@ namespace LibraryManagement.API.Services.Implementations
         private readonly IBookRatingRepository _bookRatingRepository;
         private readonly IBookRepository _bookRepository; // Inject repo sách
         private readonly ILogger<BookRatingService> _logger;
+        private readonly IBookBorrowingRequestRepository _bookBorrowingRequestRepository; // Inject repo mượn sách
+
+        public BookRatingService(
+            IBookRatingRepository bookRatingRepository,
+            IBookRepository bookRepository,
+            IBookBorrowingRequestRepository bookBorrowingRequestRepository, // Add parameter for injection
+            ILogger<BookRatingService> logger)
+        {
+            _bookRatingRepository = bookRatingRepository;
+            _bookRepository = bookRepository;
+            _bookBorrowingRequestRepository = bookBorrowingRequestRepository; // Assign injected repository
+            _logger = logger;
+        }
         // private readonly LibraryDbContext _context; // Inject DbContext nếu cần transaction
 
         public BookRatingService(
@@ -34,6 +47,21 @@ namespace LibraryManagement.API.Services.Implementations
             {
                 _logger.LogWarning("Add rating failed: Book with Id {BookId} not found.", ratingDto.BookId);
                 return (false, null, "Book not found.");
+            }
+            bool hasBorrowed;
+            try
+            {
+                hasBorrowed = await _bookBorrowingRequestRepository.UserHasBorrowedBookAsync(userId, ratingDto.BookId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking borrowing history for User {UserId} and Book {BookId}", userId, ratingDto.BookId);
+                return (false, null, "Could not verify borrowing history.");
+            }
+            if (!hasBorrowed)
+            {
+                _logger.LogWarning("Add rating failed: User {UserId} has not borrowed Book {BookId}.", userId, ratingDto.BookId);
+                return (false, null, "You can only rate books you have borrowed."); // << Trả về lỗi
             }
 
             var existingRating = await _bookRatingRepository.FindByUserAndBookAsync(userId, ratingDto.BookId, cancellationToken);

@@ -6,6 +6,7 @@ using LibraryManagement.API.Models.Entities;
 using LibraryManagement.API.Models.Enums;
 using LibraryManagement.API.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
 
 namespace LibraryManagement.API.Services.Implementations
 {
@@ -17,6 +18,7 @@ namespace LibraryManagement.API.Services.Implementations
         private readonly ILogger<BorrowingService> _logger;
         private readonly IBookBorrowingRequestDetailsRepository _borrowingDetailsRepository;
         private const int DefaultBorrowingDays = 14;
+        private const int ExtensionDays = 7;
 
         public BorrowingService(
             IBookBorrowingRequestRepository borrowingRequestRepository,
@@ -117,7 +119,7 @@ namespace LibraryManagement.API.Services.Implementations
             {
                 newRequest.Details.Add(new BookBorrowingRequestDetails
                 {
-                    BookID = bookId
+                    BookID = bookId,
                     // RequestID sẽ được EF Core tự gán khi AddAsync Request cha
                     // ReturnedDate là null ban đầu
                 });
@@ -164,6 +166,7 @@ namespace LibraryManagement.API.Services.Implementations
                     Status = createdRequest.Status.ToString(),
                     Details = createdRequest.Details.Select(d => new BorrowingRequestDetailDto
                     {
+                        Id = d.Id,
                         BookId = d.BookID,
                         BookTitle = d.Book?.Title // Lấy tên sách
                     }).ToList()
@@ -181,9 +184,9 @@ namespace LibraryManagement.API.Services.Implementations
         }
 
         // ... (Các phương thức service khác) ...
-        public async Task<PagedResult<BorrowingRequestDto>> GetMyRequestsAsync(int userId, PaginationParameters paginationParams, CancellationToken cancellationToken = default)
+        public async Task<PagedResult<BorrowingRequestDto>> GetMyRequestsAsync(int userId, BorrowingRequestQueryParameters queryParams, CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("Fetching requests for User {UserId}, Page {Page}, PageSize {PageSize}", userId, paginationParams.Page, paginationParams.PageSize);
+            _logger.LogInformation("Fetching requests for User {UserId}, Page {Page}, PageSize {PageSize}", userId, queryParams.Page, queryParams.PageSize);
             try
             {
                 var query = _borrowingRequestRepository.GetAllQueryable()
@@ -193,22 +196,56 @@ namespace LibraryManagement.API.Services.Implementations
                                                     .Include(r => r.Requestor) // Include để lấy tên
                                                     .Include(r => r.Details)!
                                                     .ThenInclude(d => d.Book) // Include để lấy chi tiết sách
-                                                    .OrderByDescending(r => r.DateRequested); // Sắp xếp mới nhất trước
+                                                    .OrderByDescending(r => r.DateRequested).AsQueryable(); // Sắp xếp mới nhất trước
+
+                // --- Áp dụng Filter từ queryParams (TƯƠNG TỰ GetAllRequestsAsync) ---
+                //if (queryParams.Status.HasValue) // Lọc theo trạng thái nếu được cung cấp
+                //    query = query.Where(r => r.Status == queryParams.Status.Value); // So sánh Enum
+
+                if (queryParams.Statuses?.Any() == true) // Dùng ?.Any() để kiểm tra null và rỗng an toàn
+                {
+                    // Lọc những request có Status nằm trong danh sách Statuses được cung cấp
+                    query = query.Where(r => queryParams.Statuses.Contains(r.Status)); // << Dùng Contains()
+                }
+                if (queryParams.DateFrom.HasValue)
+                    query = query.Where(r => r.DateRequested >= queryParams.DateFrom.Value);
+
+                if (queryParams.DateTo.HasValue)
+                    query = query.Where(r => r.DateRequested < queryParams.DateTo.Value.AddDays(1)); // Đến hết ngày DateTo
+
+                Expression<Func<BookBorrowingRequest, object>> keySelector = queryParams.SortBy?.ToLowerInvariant() switch
+                {
+                    // Thêm các trường muốn sort ở đây nếu cần (ví dụ: Status, DueDate)
+                    "status" => r => r.Status,
+                    "duedate" => r => r.DueDate ?? DateTime.MinValue, // Xử lý DueDate null
+                    _ => r => r.DateRequested // Mặc định sort theo DateRequested
+                };
+
+                if (string.Equals(queryParams.SortOrder, "desc", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.OrderByDescending(keySelector);
+                }
+                else
+                {
+                    query = query.OrderBy(keySelector);
+                }
+
+
 
                 var totalItems = await query.CountAsync(cancellationToken);
 
                 var requests = await query
-                    .Skip((paginationParams.Page - 1) * paginationParams.PageSize)
-                    .Take(paginationParams.PageSize)
+                    .Skip((queryParams.Page - 1) * queryParams.PageSize)
+                    .Take(queryParams.PageSize)
                     .ToListAsync(cancellationToken);
 
                 var requestDtos = requests.Select(r => MapToDto(r)).ToList();
-                return new PagedResult<BorrowingRequestDto>(requestDtos, paginationParams.Page, paginationParams.PageSize, totalItems);
+                return new PagedResult<BorrowingRequestDto>(requestDtos, queryParams.Page, queryParams.PageSize, totalItems);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error fetching requests for User {UserId}", userId);
-                return new PagedResult<BorrowingRequestDto>(new List<BorrowingRequestDto>(), paginationParams.Page, paginationParams.PageSize, 0);
+                return new PagedResult<BorrowingRequestDto>(new List<BorrowingRequestDto>(), queryParams.Page, queryParams.PageSize, 0);
             }
         }
 
@@ -227,8 +264,11 @@ namespace LibraryManagement.API.Services.Implementations
                 // --- Áp dụng Filter ---
                 if (queryParams.UserId.HasValue)
                     query = query.Where(r => r.RequestorID == queryParams.UserId.Value);
-                if (queryParams.Status.HasValue)
-                    query = query.Where(r => r.Status == queryParams.Status);
+                if (queryParams.Statuses?.Any() == true) // Dùng ?.Any() để kiểm tra null và rỗng an toàn
+                {
+                    // Lọc những request có Status nằm trong danh sách Statuses được cung cấp
+                    query = query.Where(r => queryParams.Statuses.Contains(r.Status)); // << Dùng Contains()
+                }
                 if (queryParams.DateFrom.HasValue)
                     query = query.Where(r => r.DateRequested >= queryParams.DateFrom.Value);
                 if (queryParams.DateTo.HasValue)
@@ -309,7 +349,13 @@ namespace LibraryManagement.API.Services.Implementations
                 request.DateProcessed = DateTime.UtcNow; // Ngày xử lý
                                                          // Tính ngày hết hạn (DueDate) - Có thể cấu hình số ngày
                 request.DueDate = DateTime.UtcNow.AddDays(DefaultBorrowingDays); // Ví dụ: 14 ngày
-
+                foreach (var detail in request.Details)
+                {
+                    // Cập nhật lại trạng thái sách trong chi tiết
+                    detail.DueDate = request.DueDate; // Gán ID request vào detail
+                    detail.OriginalDueDate = request.DueDate; // Chưa trả sách
+                }
+                await _borrowingDetailsRepository.UpdateRangeAsync(request.Details, cancellationToken); // Repo auto-save
                 await _borrowingRequestRepository.UpdateAsync(request, cancellationToken); // Repo auto-save Request
                 _logger.LogInformation("Request ID {RequestId} approved successfully by User {ApproverUserId}", requestId, approverUserId);
 
@@ -378,20 +424,258 @@ namespace LibraryManagement.API.Services.Implementations
                 RequestorId = request.RequestorID,
                 RequestorName = request.Requestor?.FullName, // Cần Include Requestor
                 DateRequested = request.DateRequested,
+                DateProcessed = request.DateProcessed,
                 RejectionReason = request.RejectionReason,
                 Status = request.Status.ToString(),
+                DueDate = request.DueDate,
                 Details = request.Details?.Select(d => new BorrowingRequestDetailDto
                 {
+                    Id = d.Id,
                     BookId = d.BookID,
                     BookTitle = d.Book?.Title // Cần Include Details.Book
-                }).ToList() ?? new List<BorrowingRequestDetailDto>()
+                }).ToList() ?? new List<BorrowingRequestDetailDto>(),
                 // Thêm thông tin người duyệt nếu cần
-                // ApproverId = request.ApproverID,
-                // ApproverName = includeApprover ? request.ApproverUser?.FullName : null, // Cần Include ApproverUser
+                ApproverId = request.ApproverID,
+                ApproverName = includeApprover ? request.Approver?.FullName : null, // Cần Include ApproverUser
                 // DateProcessed = request.DateProcessed,
                 // DueDate = request.DueDate
             };
             return dto;
+        }
+
+        public async Task<(bool Success, BorrowingRequestDto? UpdatedRequest, string? ErrorMessage)> CancelRequestAsync(int requestId, int userId, CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("User {UserId} attempting to cancel borrowing request ID {RequestId}", userId, requestId);
+
+            try
+            {
+                // Tìm request trong DB
+                // Include các thông tin cần thiết để trả về DTO đầy đủ
+                var request = await _borrowingRequestRepository.GetAllQueryable().IgnoreQueryFilters()
+                                    .Include(r => r.Requestor)
+                                    .Include(r => r.Details)!
+                                        .ThenInclude(d => d.Book)
+                                    .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+                // 1. Kiểm tra request tồn tại
+                if (request == null)
+                {
+                    _logger.LogWarning("Cancel request failed: Request ID {RequestId} not found.", requestId);
+                    return (false, null, "Borrowing request not found.");
+                }
+
+                // 2. Kiểm tra quyền sở hữu
+                if (request.RequestorID != userId)
+                {
+                    _logger.LogWarning("Cancel request failed: User {UserId} is not authorized to cancel Request ID {RequestId} (Owner is {OwnerId}).", userId, requestId, request.RequestorID);
+                    // Trả về lỗi Forbidden (403) ở Controller sẽ hợp lý hơn, nhưng service trả về lỗi logic
+                    return (false, null, "You are not authorized to cancel this request.");
+                }
+
+                // 3. Kiểm tra trạng thái có phải là "Waiting" không
+                if (request.Status != BorrowingStatus.Waiting)
+                {
+                    _logger.LogWarning("Cancel request failed: Request ID {RequestId} is not in '{Status}' status (Current: {CurrentStatus}).", requestId, BorrowingStatus.Waiting, request.Status);
+                    return (false, null, $"Only requests with status '{BorrowingStatus.Waiting}' can be cancelled.");
+                }
+
+                // --- Cập nhật trạng thái ---
+                request.Status = BorrowingStatus.Cancelled; // <<< Đặt trạng thái là Cancelled
+                request.UpdatedAt = DateTime.UtcNow;
+                // Có thể xóa ApproverID, DateProcessed, DueDate, RejectionReason nếu muốn
+                // request.ApproverID = null;
+                // request.DateProcessed = null;
+                // request.DueDate = null;
+                // request.RejectionReason = null; // Xóa lý do từ chối cũ nếu có
+
+                // Lưu thay đổi (Repo auto-save hoặc cần SaveChanges)
+                int updatedCount = await _borrowingRequestRepository.UpdateAsync(request, cancellationToken);
+                if (updatedCount <= 0)
+                {
+                    _logger.LogError("Failed to cancel request {RequestId}: UpdateAsync returned 0.", requestId);
+                    return (false, null, "Failed to update request status.");
+                }
+
+
+                _logger.LogInformation("Request ID {RequestId} cancelled successfully by User {UserId}", requestId, userId);
+
+                // Map và trả về DTO đã cập nhật
+                return (true, MapToDto(request), null); // Dùng hàm MapToDto đã có
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cancelling request ID {RequestId} for User {UserId}", requestId, userId);
+                return (false, null, "An error occurred while cancelling the request.");
+            }
+        }
+        public async Task<BorrowingRequestDetailViewDto?> GetRequestByIdAsync(int requestId, int userId, bool isAdmin, CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("Attempting to fetch detailed borrowing request for ID: {RequestId} by User: {UserId} (IsAdmin: {IsAdmin})", requestId, userId, isAdmin);
+
+            try
+            {
+                // Query request theo ID, include tất cả thông tin cần thiết
+                var request = await _borrowingRequestRepository.GetAllQueryable().IgnoreQueryFilters()
+                                     .Include(r => r.Requestor)       // Include User người yêu cầu
+                                     .Include(r => r.Approver)    // Include User người duyệt
+                                     .Include(r => r.Details)!        // Include danh sách chi tiết
+                                         .ThenInclude(d => d.Book) // Include thông tin sách từ chi tiết
+                                     .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+                // 1. Kiểm tra tồn tại
+                if (request == null)
+                {
+                    _logger.LogWarning("Get request details failed: Request ID {RequestId} not found.", requestId);
+                    return null;
+                }
+
+                // 2. Kiểm tra quyền truy cập
+                if (!isAdmin && request.RequestorID != userId)
+                {
+                    _logger.LogWarning("Get request details failed: User {UserId} is not authorized to view Request ID {RequestId} (Owner is {OwnerId}).", userId, requestId, request.RequestorID);
+                    return null; // Trả về null để Controller xử lý 403 hoặc 404
+                }
+
+                // 3. Map sang DTO chi tiết mới
+                var detailDto = new BorrowingRequestDetailViewDto
+                {
+                    Id = request.Id,
+                    DateRequested = request.DateRequested,
+                    Status = request.Status.ToString(), // Chuyển enum thành string
+                    DueDate = request.DueDate,
+                    DateProcessed = request.DateProcessed,
+                    RejectionReason = request.RejectionReason,
+
+                    RequestorId = request.RequestorID,
+                    RequestorFullName = request.Requestor?.FullName, // Lấy từ User đã include
+                    RequestorEmail = request.Requestor?.Email,     // Lấy từ User đã include
+
+                    ApproverId = request.ApproverID,
+                    ApproverFullName = request.Approver?.FullName, // Lấy từ User đã include
+                    // ApproverEmail = request.ApproverUser?.Email,
+
+                    Details = request.Details.Select(d => new BookInfoForRequestDetailDto
+                    {
+                        DetailId = d.Id,
+                        BookId = d.BookID,
+                        Title = d.Book?.Title ?? "N/A", // Lấy từ Book đã include
+                        Author = d.Book?.Author,        // Lấy từ Book đã include
+                        CoverImageUrl = d.Book?.CoverImageUrl, // Lấy từ Book đã include
+                        ReturnedDate = d.ReturnedDate,    // Lấy ngày trả từ Detail
+                        isExtended = d.IsExtensionUsed,
+                        DueDate = d.DueDate,
+                        OriginalDate = d.OriginalDueDate,
+                    }).ToList() ?? new List<BookInfoForRequestDetailDto>()
+                };
+
+                _logger.LogInformation("Successfully fetched detailed view for request ID {RequestId}", requestId);
+                return detailDto;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching detailed borrowing request for ID: {RequestId}", requestId);
+                // Ném lỗi hoặc trả về null tùy cách xử lý lỗi chung
+                // Trả về null để Controller trả 500 nếu muốn ẩn chi tiết lỗi
+                return null;
+            }
+        }
+        public async Task<(bool Success, BorrowingRequestDto? UpdatedRequest, string? ErrorMessage)> ExtendDueDateAsync(int detailId, int userId, CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("User {UserId} attempting to extend due date for borrowing detail ID {DetailId}", userId, detailId);
+
+            try
+            {
+                // Tìm chi tiết mượn sách, include Request cha để kiểm tra quyền và trạng thái
+                var detailToExtend = await _borrowingDetailsRepository.GetAllQueryable(true)
+                                           .IgnoreQueryFilters()
+                                           .Include(d => d.Request) // Include Request cha
+                                                .ThenInclude(r => r!.Requestor) // Include người mượn từ Request
+                                           .Include(d => d.Request!.Approver) // Include người duyệt
+                                           .Include(d => d.Request!.Details)! // Include tất cả details của request cha
+                                                .ThenInclude(sd => sd.Book) // Include sách từ detail
+                                           .FirstOrDefaultAsync(d => d.Id == detailId, cancellationToken);
+
+                // 1. Kiểm tra tồn tại
+                if (detailToExtend == null)
+                {
+                    _logger.LogWarning("Extend due date failed: Detail ID {DetailId} not found.", detailId);
+                    return (false, null, "Borrowing record detail not found.");
+                }
+
+                var parentRequest = detailToExtend.Request; // Lấy request cha
+
+                if (parentRequest == null) // Kiểm tra null phòng trường hợp dữ liệu lỗi
+                {
+                    _logger.LogError("Extend due date failed: Parent request is null for Detail ID {DetailId}.", detailId);
+                    return (false, null, "Invalid borrowing record state.");
+                }
+
+                // 2. Kiểm tra quyền sở hữu
+                if (parentRequest.RequestorID != userId)
+                {
+                    _logger.LogWarning("Extend due date failed: User {UserId} is not authorized for Detail ID {DetailId} (Owner is {OwnerId}).", userId, detailId, parentRequest.RequestorID);
+                    return (false, null, "You are not authorized to extend this item."); // Lỗi Forbidden 403 ở Controller
+                }
+
+                // 3. Kiểm tra trạng thái Request cha
+                if (parentRequest.Status != BorrowingStatus.Approved)
+                {
+                    _logger.LogWarning("Extend due date failed: Request ID {RequestId} for Detail ID {DetailId} is not in Approved status (Current: {Status}).", parentRequest.Id, detailId, parentRequest.Status);
+                    return (false, null, "Cannot extend item for a request that is not approved.");
+                }
+
+                // 4. Kiểm tra sách đã trả chưa
+                if (detailToExtend.ReturnedDate.HasValue)
+                {
+                    _logger.LogWarning("Extend due date failed: Book in Detail ID {DetailId} was already returned.", detailId);
+                    return (false, null, "Cannot extend item that has already been returned.");
+                }
+
+                // 5. Kiểm tra đã dùng quyền gia hạn chưa
+                if (detailToExtend.IsExtensionUsed)
+                {
+                    _logger.LogWarning("Extend due date failed: Extension already used for Detail ID {DetailId}.", detailId);
+                    return (false, null, "You have already used the one-time extension for this item.");
+                }
+
+                // 6. Kiểm tra DueDate có tồn tại không
+                if (!detailToExtend.DueDate.HasValue)
+                {
+                    _logger.LogError("Extend due date failed: DueDate is null for Detail ID {DetailId}. Approval process might be incomplete.", detailId);
+                    return (false, null, "Cannot extend item: missing current due date.");
+                }
+
+                // 7. (Tùy chọn) Kiểm tra điều kiện khác, ví dụ: không cho gia hạn nếu đã quá hạn
+                // if (detailToExtend.DueDate.Value < DateTime.UtcNow)
+                // {
+                //     _logger.LogWarning("Extend due date failed: Item for Detail ID {DetailId} is overdue.", detailId);
+                //     return (false, null, "Cannot extend overdue items.");
+                // }
+
+
+                // --- Nếu tất cả hợp lệ -> Thực hiện gia hạn ---
+                DateTime newDueDate = detailToExtend.DueDate.Value.AddDays(ExtensionDays); // Tính ngày hết hạn mới
+
+                detailToExtend.OriginalDueDate ??= detailToExtend.DueDate; // Lưu lại DueDate gốc nếu chưa có
+                detailToExtend.DueDate = newDueDate;
+                detailToExtend.IsExtensionUsed = true; // Đánh dấu đã sử dụng quyền gia hạn
+                // Cập nhật UpdatedAt cho Request cha (vì một chi tiết của nó thay đổi)
+                parentRequest.UpdatedAt = DateTime.UtcNow;
+
+                // EF Core sẽ tự động theo dõi thay đổi trên detailToExtend và parentRequest vì chúng ta đã query và include chúng
+                await _borrowingDetailsRepository.UpdateAsync(detailToExtend); // Cập nhật detail
+
+                _logger.LogInformation("Successfully extended due date for Detail ID {DetailId} to {NewDueDate} by User {UserId}", detailId, newDueDate, userId);
+
+                // Trả về DTO của Request cha đã được cập nhật (ít nhất là UpdatedAt)
+                return (true, MapToDto(parentRequest, includeApprover: true), null);
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extending due date for Detail ID {DetailId} by User {UserId}", detailId, userId);
+                return (false, null, "An error occurred while extending the due date.");
+            }
         }
     }
 }

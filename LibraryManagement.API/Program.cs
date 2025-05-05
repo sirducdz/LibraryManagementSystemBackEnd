@@ -29,6 +29,7 @@ namespace LibraryManagement.API
             builder.Services.AddScoped<IUserRepository, UserRepository>();
             builder.Services.AddScoped<IUserRefreshTokenRepository, UserRefreshTokenRepository>();
             builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.Configure<GoogleAuthSettings>(builder.Configuration.GetSection("GoogleAuthSettings"));
             builder.Services.AddScoped<ITokenService, TokenService>();
             builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
             builder.Services.AddScoped<IBookRepository, BookRepository>();
@@ -40,6 +41,7 @@ namespace LibraryManagement.API
             builder.Services.AddScoped<IBookBorrowingRequestRepository, BookBorrowingRequestRepository>();
             builder.Services.AddScoped<IBookBorrowingRequestDetailsRepository, BookBorrowingRequestDetailsRepository>();
             builder.Services.AddSingleton<PasswordHasher>();
+            builder.Services.AddScoped<IUserService, UserService>();
             builder.Services.AddControllers();
             builder.Services.AddFluentValidationAutoValidation();
             builder.Services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());

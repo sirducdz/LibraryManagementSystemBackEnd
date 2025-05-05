@@ -32,7 +32,7 @@ namespace LibraryManagement.API.Models.Entities
         public int RoleID { get; set; } // Foreign Key
         [Required] // Hoặc không nếu bạn cho phép giá trị mặc định là Unknown
         public Gender Gender { get; set; } = Gender.Unknown;
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? UpdatedAt { get; set; }
 
