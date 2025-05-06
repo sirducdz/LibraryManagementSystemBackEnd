@@ -33,6 +33,7 @@ namespace LibraryManagement.API.Services.Implementations
                                           .Include(b => b.Category)
                                           .Include(b => b.BorrowingDetails!) // Include chi tiết mượn
                                                 .ThenInclude(d => d.Request)
+                                           .Where(b => !b.IsDeleted)
                                           .AsQueryable(); // Include Category
                                                           //.Where(b => !b.IsDeleted); // Luôn lọc sách chưa xóa mềm đã cấu hình trong configuration
 
@@ -165,6 +166,7 @@ namespace LibraryManagement.API.Services.Implementations
                                              .Include(b => b.Category)
                                              .Include(b => b.BorrowingDetails!) // Include để tính AvailableQuantity
                                                  .ThenInclude(d => d.Request)
+                                                   .Where(b => !b.IsDeleted)
                                              // .Include(b => b.Ratings) // << Tùy chọn: Include Ratings
                                              .FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
 

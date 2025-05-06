@@ -2,13 +2,13 @@
 {
     public class PasswordHasher
     {
-        public string HashPassword(string password)
+        public virtual string HashPassword(string password)
         {
             // Work factor mặc định thường là đủ tốt
             return BCrypt.Net.BCrypt.HashPassword(password, workFactor: 10); // Sử dụng work factor mặc định
         }
 
-        public bool VerifyPassword(string providedPassword, string storedHash)
+        public virtual bool VerifyPassword(string providedPassword, string storedHash)
         {
             if (string.IsNullOrEmpty(providedPassword) || string.IsNullOrEmpty(storedHash))
             {
