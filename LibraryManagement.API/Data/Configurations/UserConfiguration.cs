@@ -15,6 +15,7 @@ namespace LibraryManagement.API.Data.Configurations
             builder.HasIndex(u => u.Email)
                    .IsUnique();
 
+            builder.HasQueryFilter(u => !u.IsDeleted);
             builder.HasOne(u => u.Role)
                    .WithMany(r => r.Users)
                    .HasForeignKey(u => u.RoleID)

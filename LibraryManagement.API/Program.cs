@@ -38,6 +38,7 @@ namespace LibraryManagement.API
             builder.Services.AddScoped<IBookService, BookService>();
             builder.Services.AddScoped<IBorrowingService, BorrowingService>();
             builder.Services.AddScoped<ICategoryService, CategoryService>();
+            builder.Services.AddScoped<IDashboardService, DashboardService>();
             builder.Services.AddScoped<IBookBorrowingRequestRepository, BookBorrowingRequestRepository>();
             builder.Services.AddScoped<IBookBorrowingRequestDetailsRepository, BookBorrowingRequestDetailsRepository>();
             builder.Services.AddSingleton<PasswordHasher>();

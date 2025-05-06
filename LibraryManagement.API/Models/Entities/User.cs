@@ -23,6 +23,9 @@ namespace LibraryManagement.API.Models.Entities
         [EmailAddress]
         public string Email { get; set; } = string.Empty; // Nên có unique index
 
+        [Required] // Đảm bảo cột này không NULL trong DB
+        public bool IsDeleted { get; set; } = false;
+
         [Required]
         public string PasswordHash { get; set; } = string.Empty;
 
